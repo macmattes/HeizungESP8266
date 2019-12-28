@@ -15,6 +15,10 @@ byte calculateCRC(byte* data, byte len);
 boolean checkCRC(byte* data, byte len);
 
 /*
+* start conversation
+*/
+byte writeStartsequenz(byte* resultBytePtr, byte resultByteLength);
+/*
 * Starts a request to the Vaillant Heater
 */
 byte readRequest(byte debugByte, byte paramNr,byte* resultBytePtr, byte resultByteLength);

@@ -17,6 +17,8 @@ byte getParametertypLenth(Parametertyp parametertyp){
     case Analog2b:        return 2;
 
     case Analog2b_Sensor: return 3;
+
+    case Fehlerspeicher: return 50;
   }
 }
 

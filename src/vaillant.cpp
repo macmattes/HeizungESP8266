@@ -41,6 +41,67 @@ void writeDebugBytes(byte* data, byte dataLenth) {
   }
 }
 
+byte writeStartsequenz(byte* resultBytePtr, byte resultByteLength) {
+
+  SerialDebug.println("Write Startsequenz");
+
+  //Make the Request
+  byte request[readParamRequestLenth] = {0x07,0x02,0x00,0x00,0x00,0x04, 0x00};
+  request[readParamRequestLenth-1] = calculateCRC(request,readParamRequestLenth-1);
+  SerialDebug.print("Request: ");
+  writeDebugBytes(request, readParamRequestLenth);
+  SerialDebug.println();
+
+  //Sending Request
+  for(byte i = 0; i<7; i++)
+    SerialVaillant.write(request[i]);
+
+  SerialVaillant.setTimeout(200);
+
+  //Read first Byte
+  if(SerialVaillant.readBytes(resultBytePtr,1)!=1) {
+    SerialDebug.println("nothing received");
+    return 0;
+  }
+
+  //Receive length calculation
+  byte receiveLength = resultBytePtr[0];
+  if(receiveLength>resultByteLength) {
+    SerialDebug.print("Vaillant wants to send ");
+    SerialDebug.print(receiveLength);
+    SerialDebug.print(" bytes, but only ");
+    SerialDebug.print(resultByteLength);
+    SerialDebug.println(" bytes as buffer");
+
+    receiveLength = resultByteLength;
+  }
+
+  byte awaitedBytes = receiveLength-1;
+
+  SerialDebug.print("Awaiting ");
+  SerialDebug.print(awaitedBytes);
+  SerialDebug.println(" additional bytes");
+
+  //Check Length
+  byte receivedBytes2 = SerialVaillant.readBytes(&(resultBytePtr[1]),awaitedBytes);
+  if(receivedBytes2!=awaitedBytes) {
+    SerialDebug.print("Awaited ");
+    SerialDebug.print(awaitedBytes);
+    SerialDebug.print(" bytes, but received ");
+    SerialDebug.print(receivedBytes2);
+    SerialDebug.println(" before Timeout");
+    return (receivedBytes2+1)*-1;
+  }
+
+  //Final CRC Check
+  if(checkCRC(resultBytePtr, receivedBytes2+1)) {
+    return receivedBytes2+1;
+  } else {
+    SerialDebug.print("CRC Fail");
+    return (receivedBytes2+1)*-1;
+  }
+}
+
 byte readParam(byte paramNr,byte* resultBytePtr, byte resultByteLength) {
   // For a Parameter Request the debug Byte is 0
   return readRequest(0,paramNr, resultBytePtr, resultByteLength);
@@ -65,7 +126,7 @@ byte readRequest(byte debugByte, byte paramNr,byte* resultBytePtr, byte resultBy
   for(byte i = 0; i<7; i++)
     SerialVaillant.write(request[i]);
 
-  SerialVaillant.setTimeout(1000);
+  SerialVaillant.setTimeout(500);
 
   //Read first Byte
   if(SerialVaillant.readBytes(resultBytePtr,1)!=1) {
@@ -128,6 +189,7 @@ const String parse1ByteSchaltzustand(byte data) {
   switch (data) {
     case 0xF0:
     case 0x00: return "Inaktiv";
+    case 0x64:
     case 0x0F:
     case 0x01: return "Aktiv";
   }
@@ -194,6 +256,8 @@ ParseResult parseTelegram(byte ParameterNr, Parametertyp parametertyp, byte* tel
   }
 
   switch(parametertyp) {
+      case Keiner:
+
       case Stat01:
       case Stat0F: return ParseResult{"",parse1ByteSchaltzustand(telegramData[2]),""};
 
@@ -203,4 +267,6 @@ ParseResult parseTelegram(byte ParameterNr, Parametertyp parametertyp, byte* tel
 
       case Fehlerspeicher: return parseFehlerspeicher(telegramData);
   }
+
+  return ParseResult{"","","Nothing"};
 }

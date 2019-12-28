@@ -3,6 +3,10 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
+#include <ESP8266mDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
+
 #include "vaillant.h"
 #include "Parameterliste.h"
 
@@ -55,18 +59,18 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial1.print("Message arrived [");
   Serial1.print(topic);
   Serial1.print("] ");
-  for (int i = 0; i < length; i++) {
+  for (uint i = 0; i < length; i++) {
     Serial1.print((char)payload[i]);
   }
   Serial1.println();
 
   // Switch on the LED if an 1 was received as first character
   if ((char)payload[0] == '1') {
-    digitalWrite(BUILTIN_LED, LOW);   // Turn the LED on (Note that LOW is the voltage level
+    digitalWrite(LED_BUILTIN, LOW);   // Turn the LED on (Note that LOW is the voltage level
     // but actually the LED is on; this is because
     // it is acive low on the ESP-01)
   } else {
-    digitalWrite(BUILTIN_LED, HIGH);  // Turn the LED off by making the voltage HIGH
+    digitalWrite(LED_BUILTIN, HIGH);  // Turn the LED off by making the voltage HIGH
   }
 
 }
@@ -82,7 +86,7 @@ void reconnect() {
     if (client.connect(clientId.c_str())) {
       Serial1.println("connected");
       // Once connected, publish an announcement...
-      //client.publish("outTopic", "hello world");
+      client.publish("outTopic", "online");
       // ... and resubscribe
       //client.subscribe("inTopic");
     } else {
@@ -98,13 +102,15 @@ void reconnect() {
 
 
 void setup() {
-  pinMode(BUILTIN_LED, OUTPUT);     // Initialize the BUILTIN_LED pin as an output
+  pinMode(LED_BUILTIN, OUTPUT);     // Initialize the BUILTIN_LED pin as an output
   Serial.begin(9600);               // Vaillant Serial Port
-  Serial1.begin(115200);            // Debug Serial Port
+  Serial1.begin(9600);            // Debug Serial Port
   Serial1.println('\0');
   setup_wifi();
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
+
+  ArduinoOTA.begin();
 
   Serial1.println("Vaillant ESP8266");
 }
@@ -120,6 +126,9 @@ void loop() {
     reconnect();
   }
 
+  //check OTA for new messages
+  ArduinoOTA.handle();
+
   //check MQTT for new messages
   client.loop();
 
@@ -127,20 +136,33 @@ void loop() {
   byte resArrayLen = 50;
   byte array[resArrayLen];
 
+  //paramNr=-1;
+
   int len;
   if(paramNr==-1)
   {
+    // start Reading
+    for(int i=0; i < 10; i++){
+      len = writeStartsequenz(array, resArrayLen);
+
+      if(len>0){
+        client.publish(MQTT_ErrorTopic.c_str(), (char*) array);
+      }
+
+      delay(200);
+    }
+
     // Read error log
-    len = readRequest(1, paramNr, array, resArrayLen);
+    /*len = readRequest(1, paramNr, array, resArrayLen);
 
     if(len>0){
       client.publish(MQTT_ErrorTopic.c_str(), (char*) array);
-    }
+    }*/
 
   }
   else
   {
-    len = readParam(paramNr, array, resArrayLen);
+/*    len = readParam(paramNr, array, resArrayLen);
 
     //Len >0 ==> valid result
     if(len>0){
@@ -152,8 +174,8 @@ void loop() {
 
       //Make Message
       char rawMessage [MQTT_RawMessageBytes*3];
-      int i;
-      for(i= 0;(i<len)&&(i<MQTT_RawMessageBytes);i++)
+      uint i;
+      for(i= 0;(i<(unsigned int)len)&&(i<MQTT_RawMessageBytes);i++)
       {
         const char* hexchars= "0123456789ABCDEF";
         rawMessage[i*3] = hexchars[(array[i]>>4) & 0xF];
@@ -164,39 +186,44 @@ void loop() {
 
       //Publish data
       client.publish(rawTopic, rawMessage);
-
+*/
       //Parse Data  - TODO Make funtion
 
       //Start Parsing
       const Parameterelement* parameterElement = getParameterelement(paramNr);
       if(parameterElement!=NULL)
       {
-        //Only preceeding if an element was returned
-        ParseResult parseResult = parseTelegram(paramNr, parameterElement->parametertyp, array, len);
-        if(!parseResult.value.equals(""))
-        {
-          char parseTopic [MQTT_ParameterTopicLength];
-          snprintf(parseTopic,MQTT_ParameterTopicLength, MQTT_ParameterTopic.c_str(), (parameterElement->Name).c_str(),"value");
-          client.publish(parseTopic,parseResult.value.c_str());
+        len = readParam(paramNr, array, resArrayLen);
+        if(len>0){
+          //Only preceeding if an element was returned
+          ParseResult parseResult = parseTelegram(paramNr, parameterElement->parametertyp, array, len);
+          if(!parseResult.value.equals(""))
+          {
+            char parseTopic [MQTT_ParameterTopicLength];
+            snprintf(parseTopic,MQTT_ParameterTopicLength, MQTT_ParameterTopic.c_str(), (parameterElement->Name).c_str(),"value");
+            client.publish(parseTopic,parseResult.value.c_str());
+          }
+          if(!parseResult.state.equals(""))
+          {
+            char parseTopic [MQTT_ParameterTopicLength];
+            snprintf(parseTopic,MQTT_ParameterTopicLength, MQTT_ParameterTopic.c_str(), (parameterElement->Name).c_str(),"state");
+            client.publish(parseTopic,parseResult.state.c_str());
+          }
+          if(!parseResult.error.equals(""))
+          {
+            client.publish(MQTT_ErrorTopic.c_str(),parseResult.state.c_str());
+          }
+          delay(200);
         }
-        if(!parseResult.state.equals(""))
-        {
-          char parseTopic [MQTT_ParameterTopicLength];
-          snprintf(parseTopic,MQTT_ParameterTopicLength, MQTT_ParameterTopic.c_str(), (parameterElement->Name).c_str(),"state");
-          client.publish(parseTopic,parseResult.state.c_str());
-        }
-        if(!parseResult.error.equals(""))
-        {
-          client.publish(MQTT_ErrorTopic.c_str(),parseResult.state.c_str());
-        }
-
       }
-    }
+    //}
   }
 
   paramNr++;
-  if(paramNr>paramNrMax)
+  if(paramNr>paramNrMax){
     paramNr=paramNrDefault;
+    delay(3000);
+  }
 
-  delay(100);
+  //delay(1000);
 }
