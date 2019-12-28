@@ -6,7 +6,7 @@ http://ab-log.ru/smart-house/heating-automation/vaillant-rs232
 
 this is a forked project from haniham/HeizungESP8266
 
-- changed to run on a nodemcu board from lolin,
+- runs on a nodemcu board from lolin,
 
 - heater is a Vaillant VK164/1C
 
