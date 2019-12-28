@@ -1,4 +1,8 @@
-# HeizungESP8266
+# HeizungESP8266     -       Vaillant X6 Connection
+
+http://old.ethersex.de/index.php/Vaillant_X6_Schnittstelle
+
+http://ab-log.ru/smart-house/heating-automation/vaillant-rs232
 
 this is a forked project from haniham/HeizungESP8266
 
